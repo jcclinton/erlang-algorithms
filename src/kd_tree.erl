@@ -1,6 +1,6 @@
 -module(kd_tree).
 
--export([create/0, create/1, insert/2, remove/2, rebalance/1]).
+-export([create/0, create/1, insert/2, remove/2, rebalance/1, nearest_neighbor/2]).
 
 
 
@@ -91,8 +91,59 @@ flatten(Tree) ->
 
 % rebalances tree
 % probably not the most efficient way to do it,
-% but it works
+% but it is simple and effective
 % (tree) -> tree
 rebalance(Tree) ->
 	Points = flatten(Tree),
 	create(Points).
+
+
+% finds nearest neighbor of a point
+% (tuple, tree) -> tuple
+nearest_neighbor(_Point, null) -> null;
+nearest_neighbor(Point, Tree) ->
+	nn(Point, Tree, 0).
+
+% exhaustive nn search
+% (tuple, tree, int) -> tuple
+nn(Point, Tree, Depth) ->
+	{Median, Left, Right} = Tree,
+	if Left == null andalso Right == null -> Median;
+		Left == null ->
+			BestRight = nn(Point, Right, Depth+1),
+			Rd = distance(Point, BestRight),
+			Md = distance(Point, Median),
+			if Rd < Md -> BestRight;
+				true -> Median
+			end;
+		Right == null ->
+			BestLeft = nn(Point, Left, Depth+1),
+			Ld = distance(Point, BestLeft),
+			Md = distance(Point, Median),
+			if Ld < Md -> BestLeft;
+				true -> Median
+			end;
+		true ->
+			BestLeft = nn(Point, Left, Depth+1),
+			BestRight = nn(Point, Right, Depth+1),
+			Ld = distance(Point, BestLeft),
+			Rd = distance(Point, BestRight),
+			Md = distance(Point, Median),
+			if Ld < Md andalso Ld < Rd -> BestLeft;
+				Rd < Md andalso Rd < Ld -> BestRight;
+				true -> Median
+			end
+		end.
+
+
+% calculates the distance between n-dimensional points
+% (tuple, tuple} -> float
+distance(P1, P2) ->
+	Size = size(P1),
+	DiffSquared = lists:foldl(fun(K, AccIn) ->
+										El1 = element(K, P1),
+										El2 = element(K, P2),
+										AccIn + math:pow(El1 - El2, 2)
+									end, 0, lists:seq(1, Size)),
+	math:sqrt(DiffSquared).
+
