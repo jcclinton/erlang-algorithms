@@ -1,6 +1,6 @@
 -module(kd_tree).
 
--export([create/0, create/1, insert/2]).
+-export([create/0, create/1, insert/2, remove/2, rebalance/1]).
 
 
 
@@ -51,3 +51,48 @@ insert(Point, Tree, Depth) ->
 													true -> {insert(Point, Left, Depth+1), Right}
 												end,
 	{Median, NewLeft, NewRight}.
+
+
+% remove point from tree.
+% once it finds the point to remove,
+% it then gets all points below that point,
+% then recreates the subtree with those points.
+% doesnt cause tree to become imbalanced due to the way the subtree is recreated
+% (point, tree) -> tree
+remove(Point, Tree) ->
+	remove(Point, Tree, 0).
+
+% (point, tree, int) -> tree
+remove(_Point, null, _Depth) -> null;
+remove(Point, Tree, Depth) ->
+	K = size(Point),
+	Axis = (Depth rem K) + 1,
+	{Median, Left, Right} = Tree,
+	if Point == Median ->
+			Points = lists:merge(flatten(Left), flatten(Right)),
+			create(Points);
+		Point /= Median ->
+			MedianK = element(Axis, Median),
+			PointK = element(Axis, Point),
+			{NewLeft, NewRight} = if PointK > MedianK -> {Left, remove(Point, Right, Depth+1)};
+															true -> {remove(Point, Left, Depth+1), Right}
+														end,
+			{Median, NewLeft, NewRight}
+	end.
+
+% flattens all points in a tree into a point list
+% this is probably a slow function
+% (tree) -> [tuple]
+flatten(null) -> [];
+flatten(Tree) ->
+	{Median, Left, Right} = Tree,
+	[Median] ++ flatten(Left) ++ flatten(Right).
+
+
+% rebalances tree
+% probably not the most efficient way to do it,
+% but it works
+% (tree) -> tree
+rebalance(Tree) ->
+	Points = flatten(Tree),
+	create(Points).
