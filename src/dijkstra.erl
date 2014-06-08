@@ -30,24 +30,34 @@ top_check(N, Nodes) ->
 		true -> [N+10|Nodes]
 	end.
 left_check(N, Nodes) ->
-	if N div 10 == 1 -> Nodes;
+	if N rem 10 == 1 -> Nodes;
 		true -> [N-1|Nodes]
 	end.
 right_check(N, Nodes) ->
-	if N div 10 == 0 -> Nodes;
+	if N rem 10 == 0 -> Nodes;
 		true -> [N+1|Nodes]
 	end.
 	
 
-test() ->
-	Graph = create_graph(),
-	run(1, 99, Graph).
+sort_graph(Graph) ->
+	lists:sort(fun(A, B) ->
+		{node, AId, _, _, _} = A,
+		{node, BId, _, _, _} = B,
+		if AId =< BId -> true;
+			true -> false
+		end
+	end, Graph).
+		
 
 run() ->
 	run(1, 100, create_graph()).
 run(StartId, EndId, Graph) ->
-	CurrentNode = get_start_node(Graph, StartId),
-	check_current_node(Graph, CurrentNode, EndId).
+	CurrentNode = get_node(Graph, StartId),
+	OutGraph = check_current_node(Graph, CurrentNode, EndId),
+	SortedOutGraph = sort_graph(OutGraph),
+	io:format("out graph: ~p~n", [SortedOutGraph]),
+	ok.
+	%get_path(StartId, EndId, Graph).
 
 check_current_node(Graph, CurrentNode, EndId) ->
 	{node, CurrId, Distance, false, ConnectedNodeIds} = CurrentNode,
@@ -65,8 +75,7 @@ check_current_node(Graph, CurrentNode, EndId) ->
 	NewGraph1 = NewCon ++ UnCon,
 	NewGraph = replace_node(NewCurrentNode, NewGraph1),
 	if EndId == CurrId ->
-			io:format("out graph: ~p~n", [NewGraph]),
-			EndId;
+			NewGraph;
 		true ->
 			NextNode = get_next_node(NewGraph),
 			if NextNode == [] ->
@@ -135,11 +144,11 @@ replace_nodes(Nodes, Graph) ->
 
 
 
-get_start_node([], _StartId) -> throw(badarg);
-get_start_node([Node|Graph], StartId) ->
+get_node([], _) -> throw(badarg);
+get_node([Node|Graph], LookupId) ->
 	{node, Id, _, _, _} = Node,
-	if StartId == Id -> Node;
-		true -> get_start_node(Graph, StartId)
+	if LookupId == Id -> Node;
+		true -> get_node(Graph, LookupId)
 	end.
 
 calc_tentative_distance(Nodes, CurrDistance) ->
@@ -147,11 +156,22 @@ calc_tentative_distance(Nodes, CurrDistance) ->
 calc_tentative_distance([], _CurrDistance, Acc) -> Acc;
 calc_tentative_distance([Node|Rest], CurrDistance, Acc) ->
 	{node, Id, Distance, Visited, Conns} = Node,
-	NewDistance = if Distance == infinity -> 1;
+	EdgeLength = 1,
+	NewDistance =
+							if not Visited ->
+								CurrDistPlusEdge = CurrDistance + EdgeLength,
+								if Distance == infinity -> CurrDistPlusEdge;
 										true ->
-											if CurrDistance > Distance + 1 -> Distance + 1;
-												true -> CurrDistance
+											if CurrDistPlusEdge > Distance -> Distance;
+												true -> CurrDistPlusEdge
 											end
-								end,
+								end;
+								true -> Distance
+							end,
 	NewNode = {node, Id, NewDistance, Visited, Conns},
 	calc_tentative_distance(Rest, CurrDistance, [NewNode|Acc]).
+
+
+get_path(_StartId, EndId, Graph) ->
+	_EndNode = get_node(Graph, EndId),
+	Graph.
