@@ -5,9 +5,44 @@
 
 
 
+%% node functions
 create_node(Id, Distance, ConnectedNodeIds) ->
 	HasBeenVisited = false,
 	{node, Id, Distance, HasBeenVisited, ConnectedNodeIds}.
+
+mark_visited_node(Node) ->
+	{node, Id, Distance, false, ConnectedNodeIds} = Node,
+	{node, Id, Distance, true, ConnectedNodeIds}.
+
+update_node_distance(NewDistance, Node) ->
+	{node, Id, _, HasVisited, ConnectedNodeIds} = Node,
+	{node, Id, NewDistance, HasVisited, ConnectedNodeIds}.
+
+get_node_id(Node) ->
+	get_node_value(Node, id).
+
+get_node_distance(Node) ->
+	get_node_value(Node, distance).
+
+get_node_visited(Node) ->
+	get_node_value(Node, visited).
+
+get_node_connected(Node) ->
+	get_node_value(Node, connected).
+
+get_node_value(Node, Value) ->
+	{node, Id, Distance, HasBeenVisited, ConnectedNodeIds} = Node,
+	case Value of
+		id -> Id;
+		distance -> Distance;
+		visited -> HasBeenVisited;
+		connected -> ConnectedNodeIds
+	end.
+
+%%% end node functions
+
+
+%% graph functions
 
 create_graph() ->
 	Starting = 1,
@@ -41,27 +76,37 @@ right_check(N, Nodes) ->
 
 sort_graph(Graph) ->
 	lists:sort(fun(A, B) ->
-		{node, AId, _, _, _} = A,
-		{node, BId, _, _, _} = B,
+		AId = get_node_id(A),
+		BId = get_node_id(B),
 		if AId =< BId -> true;
 			true -> false
 		end
 	end, Graph).
 		
 
-run() ->
+%% end graph functions
+
+
+%% public api
+
+test() ->
 	run(1, 100, create_graph()).
+
 run(StartId, EndId, Graph) ->
 	CurrentNode = get_node(Graph, StartId),
 	OutGraph = check_current_node(Graph, CurrentNode, EndId),
-	SortedOutGraph = sort_graph(OutGraph),
+	%SortedOutGraph = sort_graph(OutGraph),
 	%io:format("out graph: ~p~n", [SortedOutGraph]),
 	get_path(StartId, EndId, OutGraph).
 
+%% private functions
+
 check_current_node(Graph, CurrentNode, EndId) ->
-	{node, CurrId, Distance, false, ConnectedNodeIds} = CurrentNode,
+	CurrId = get_node_id(CurrentNode),
+	Distance = get_node_distance(CurrentNode),
+	ConnectedNodeIds = get_node_connected(CurrentNode),
 	{Con, UnCon} = lists:foldl(fun(Node, {ConnectedNodes, UnConnectedNodes}) ->
-								{node, Id, _, _, _} = Node,
+								Id = get_node_id(Node),
 								IsMember = lists:member(Id, ConnectedNodeIds),
 								if IsMember ->
 										{[Node|ConnectedNodes], UnConnectedNodes};
@@ -70,7 +115,7 @@ check_current_node(Graph, CurrentNode, EndId) ->
 								end
 	end, {[],[]}, Graph),
 	NewCon = calc_tentative_distance(Con, Distance),
-	NewCurrentNode = {node, CurrId, Distance, true, ConnectedNodeIds},
+	NewCurrentNode = mark_visited_node(CurrentNode),
 	NewGraph1 = NewCon ++ UnCon,
 	NewGraph = replace_node(NewCurrentNode, NewGraph1),
 	if EndId == CurrId ->
@@ -89,15 +134,17 @@ get_next_node(Nodes) ->
 
 get_next_node([], Next) -> Next;
 get_next_node([Node|Rest], []) ->
-	{node, _, Distance, HasVisited, _} = Node,
+	Distance = get_node_distance(Node),
+	HasVisited = get_node_visited(Node),
 	Next = if HasVisited orelse Distance == infinity -> [];
 					true ->
 						Node
 				end,
 	get_next_node(Rest, Next);
 get_next_node([Node|Rest], Next) ->
-	{node, _, Distance, HasVisited, _} = Node,
-	{node, _, NextDistance, _, _} = Next,
+	Distance = get_node_distance(Node),
+	HasVisited = get_node_visited(Node),
+	NextDistance = get_node_distance(Next),
 	NewNext = if not HasVisited andalso Distance < NextDistance ->
  Node;
 							true -> Next
@@ -108,9 +155,9 @@ get_next_node([Node|Rest], Next) ->
 
 
 remove_node(RemoveNode, Nodes) ->
-	{node, RemoveId, _, _, _} = RemoveNode,
+	RemoveId = get_node_id(RemoveNode),
 	lists:foldl(fun(Node, AccIn) ->
-								{node, Id, _, _, _} = Node,
+								Id = get_node_id(Node),
 								if RemoveId == Id -> AccIn;
 									true -> [Node|AccIn]
 								end
@@ -120,8 +167,8 @@ replace_node(Node, Graph) ->
 	replace_node(Node, Graph, []).
 replace_node(_Node, [], Acc) -> Acc;
 replace_node(Node, [Head|Tail], Acc) ->
-	{node, NodeId, _, true, _} = Node,
-	{node, HeadId, _, _, _} = Head,
+	NodeId = get_node_id(Node),
+	HeadId = get_node_id(Head),
 	if HeadId == NodeId ->
 			Tail ++ [Node|Acc];
 		true ->
@@ -131,9 +178,9 @@ replace_node(Node, [Head|Tail], Acc) ->
 
 replace_nodes(Nodes, Graph) ->
 	lists:foldl(fun(GraphNode, GraphAcc) ->
-													{node, Id, _, _, _} = GraphNode,
+													Id = get_node_id(GraphNode),
 													NewNode = lists:foldl(fun(ReplaceNode, AccIn) ->
-														{node, ReplaceId, _, _, _} = ReplaceNode,
+														ReplaceId = get_node_id(ReplaceNode),
 														if Id == ReplaceId -> ReplaceNode;
 															true -> AccIn
 														end
@@ -145,7 +192,7 @@ replace_nodes(Nodes, Graph) ->
 
 get_node([], _) -> throw(badarg);
 get_node([Node|Graph], LookupId) ->
-	{node, Id, _, _, _} = Node,
+	Id = get_node_id(Node),
 	if LookupId == Id -> Node;
 		true -> get_node(Graph, LookupId)
 	end.
@@ -154,7 +201,8 @@ calc_tentative_distance(Nodes, CurrDistance) ->
 	calc_tentative_distance(Nodes, CurrDistance, []).
 calc_tentative_distance([], _CurrDistance, Acc) -> Acc;
 calc_tentative_distance([Node|Rest], CurrDistance, Acc) ->
-	{node, Id, Distance, Visited, Conns} = Node,
+	Distance = get_node_distance(Node),
+	Visited = get_node_visited(Node),
 	EdgeLength = 1,
 	NewDistance =
 							if not Visited ->
@@ -167,9 +215,11 @@ calc_tentative_distance([Node|Rest], CurrDistance, Acc) ->
 								end;
 								true -> Distance
 							end,
-	NewNode = {node, Id, NewDistance, Visited, Conns},
+	NewNode = update_node_distance(NewDistance, Node),
 	calc_tentative_distance(Rest, CurrDistance, [NewNode|Acc]).
 
+
+%% path functions
 
 get_path(StartId, EndId, Graph) ->
 	EndNode = get_node(Graph, EndId),
@@ -179,7 +229,8 @@ get_path_list(CurrNode, Graph, StartId) ->
 	get_path_list(CurrNode, Graph, StartId, []).
 
 get_path_list(CurrNode, Graph, StartId, Ids) ->
-	{node, CurrId, _, _, Conns} = CurrNode,
+	CurrId = get_node_id(CurrNode),
+	Conns = get_node_connected(CurrNode),
 	if CurrId == StartId -> Ids;
 		true ->
 			NextNode = get_shortest_conn_node(Conns, Graph),
@@ -192,8 +243,8 @@ get_shortest_conn_node(Conns, Graph) ->
 		NextNode = get_node(Graph, ConnId),
 		if ShortestNode == Empty -> NextNode;
 			true ->
-				{node, _, Distance, _, _} = NextNode,
-				{node, _, ShortDistance, _, _} = ShortestNode,
+				Distance = get_node_distance(NextNode),
+				ShortDistance = get_node_distance(ShortestNode),
 				if Distance < ShortDistance -> NextNode;
 					true -> ShortestNode
 				end
