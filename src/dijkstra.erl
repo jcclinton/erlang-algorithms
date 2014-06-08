@@ -55,9 +55,8 @@ run(StartId, EndId, Graph) ->
 	CurrentNode = get_node(Graph, StartId),
 	OutGraph = check_current_node(Graph, CurrentNode, EndId),
 	SortedOutGraph = sort_graph(OutGraph),
-	io:format("out graph: ~p~n", [SortedOutGraph]),
-	ok.
-	%get_path(StartId, EndId, Graph).
+	%io:format("out graph: ~p~n", [SortedOutGraph]),
+	get_path(StartId, EndId, OutGraph).
 
 check_current_node(Graph, CurrentNode, EndId) ->
 	{node, CurrId, Distance, false, ConnectedNodeIds} = CurrentNode,
@@ -172,6 +171,32 @@ calc_tentative_distance([Node|Rest], CurrDistance, Acc) ->
 	calc_tentative_distance(Rest, CurrDistance, [NewNode|Acc]).
 
 
-get_path(_StartId, EndId, Graph) ->
-	_EndNode = get_node(Graph, EndId),
-	Graph.
+get_path(StartId, EndId, Graph) ->
+	EndNode = get_node(Graph, EndId),
+	get_path_list(EndNode, Graph, StartId).
+
+get_path_list(CurrNode, Graph, StartId) ->
+	get_path_list(CurrNode, Graph, StartId, []).
+
+get_path_list(CurrNode, Graph, StartId, Ids) ->
+	{node, CurrId, _, _, Conns} = CurrNode,
+	if CurrId == StartId -> Ids;
+		true ->
+			NextNode = get_shortest_conn_node(Conns, Graph),
+			get_path_list(NextNode, Graph, StartId, [CurrId|Ids])
+	end.
+
+get_shortest_conn_node(Conns, Graph) ->
+	Empty = null,
+	lists:foldl(fun(ConnId, ShortestNode) ->
+		NextNode = get_node(Graph, ConnId),
+		if ShortestNode == Empty -> NextNode;
+			true ->
+				{node, _, Distance, _, _} = NextNode,
+				{node, _, ShortDistance, _, _} = ShortestNode,
+				if Distance < ShortDistance -> NextNode;
+					true -> ShortestNode
+				end
+		end
+	end, Empty, Conns).
+
