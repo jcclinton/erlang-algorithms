@@ -1,13 +1,15 @@
 -module(genetic_worker).
 
 
--export([start_link/1]).
+-export([start_link/2, run/2]).
 
 
 
-start_link(ServerPid) ->
-	spawn_link(?MODULE, fun run/1, [ServerPid]).
+start_link(ServerPid, Bytes) ->
+	%io:format("starting worker with pid ~p and bytes ~p~n", [ServerPid, Bytes]),
+	spawn_link(?MODULE, run, [ServerPid, Bytes]).
 
 
-run(ServerPid) ->
-	ServerPid ! success.
+run(ServerPid, Bytes) ->
+	%io:format("running worker~n"),
+	gen_server:cast(ServerPid, success).
