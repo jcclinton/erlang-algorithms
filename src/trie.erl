@@ -1,7 +1,6 @@
 -module(trie).
 
 -export([new/0, insert/2, lookup/2]).
--compile([export_all]).
 
 
 %% space-efficient trie implemenation that does not store values
@@ -54,15 +53,38 @@ get_letter(Letter, [{HeadLetter, HeadTail}|Tail], Acc) ->
 lookup(WordList, Trie) when is_list(WordList) ->
 	Word = list_to_binary(WordList),
 	lookup(Word, Trie);
-lookup(<<>>, Trie) -> extract_words(Trie);
-lookup(<<LNum:8, Rest/binary>>, Trie) ->
+lookup(Word, Trie) when is_binary(Word) ->
+	lists:flatten(lookup(Word, Trie, <<>>));
+lookup(_, _) -> {error, badarg}.
+
+lookup(<<>>, Trie, Word) ->
+	% builds up lookup letters in the Word accumulator
+	% Trie is the subtree of the Word letters
+	extract_words(Trie, Word);
+lookup(<<LNum:8, Rest/binary>>, Trie, <<Word/binary>>) ->
 	Letter = <<LNum:8>>,
 	{Node, _} = get_letter(Letter, Trie),
 	case Node of
 		undefined -> [];
-		{Letter, LetterSubTrie} -> [Letter] ++ [lookup(Rest, LetterSubTrie)]
+		{Letter, LetterSubTrie} ->
+			NewWord = <<LNum:8, Word/binary>>,
+			lookup(Rest, LetterSubTrie, NewWord)
 	end.
 
-extract_words([]) -> [];
-extract_words({Letter, SubTrie}) ->[Letter] ++ [extract_words(SubTrie)];
-extract_words([Head|Rest]) -> extract_words(Head) ++ extract_words(Rest).
+
+%% extracts all words in this subtrie
+%% prepends the Word prefix to them to form full words
+extract_words([], Word) -> [reverse(Word)];
+extract_words([{<<LNum:8>>, SubTrie}], <<Word/binary>>) ->
+	NewWord = <<LNum:8, Word/binary>>,
+	extract_words(SubTrie, NewWord);
+extract_words([{<<LNum:8>>, SubTrie}|Rest], <<Word/binary>>) ->
+	NewWord = <<LNum:8, Word/binary>>,
+	[extract_words(SubTrie, NewWord) | extract_words(Rest, Word)].
+
+% reverse util function
+reverse(Bin) when is_binary(Bin) ->
+	reverse(Bin, <<>>).
+reverse(<<>>, Acc) -> Acc;
+reverse(<<L:8, Rest/binary>>, <<Acc/binary>>) ->
+	reverse(<<Rest/binary>>, <<L:8, Acc/binary>>).
