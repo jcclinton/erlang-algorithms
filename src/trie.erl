@@ -1,47 +1,52 @@
 -module(trie).
 
--export([empty/0, insert/2, lookup/2]).
+-export([new/0, insert/2, lookup/2]).
 -compile([export_all]).
 
 
+%% space-efficient trie implemenation that does not store values
+%% used to lookup any words based on some prefix (ie autocomplete, suggestions, etc)
 
-empty() ->
+
+% create new empty trie
+new() ->
 	[].
 
 
+% insert word into tree
 insert(Word, Trie) when is_list(Word), is_list(Trie) ->
 	WordBin = list_to_binary(Word),
 	insert(WordBin, Trie);
 insert(<<>>, Trie) -> Trie;
 insert(<<LNum:8, Rest/binary>>, Trie) ->
-	L = <<LNum:8>>,
-	{Node, RestTrie} = get_letter(L, Trie),
-	NewNode = case Node of
-		undefined -> [{L, insert_new(Rest)}];
-		{L, LetterSubTrie} -> [{L, insert(Rest, LetterSubTrie)}]
+	Letter = <<LNum:8>>,
+	{Node, RestTrie} = get_letter(Letter, Trie),
+	NewSubTrie = case Node of
+		undefined -> insert_new(Rest);
+		{Letter, LetterSubTrie} -> insert(Rest, LetterSubTrie)
 	end,
-	RestTrie ++ NewNode;
+	[{Letter, NewSubTrie}] ++ RestTrie;
 insert(_,_) -> {error, badarg}.
 
 
-%inserts a new subtrie
-insert_new(<<>>) -> empty();
-insert_new(<<L:8, Rest/binary>>) ->
-	[{<<L:8>>, insert_new(Rest)}].
+%creates a new subtrie
+insert_new(<<>>) -> new();
+insert_new(<<Letter:8, Rest/binary>>) ->
+	[{<<Letter:8>>, insert_new(Rest)}].
 
 
 
 %checks if this letter is in this level of the given trie
-get_letter(L, Trie) ->
-	get_letter(L, Trie, []).
+get_letter(Letter, Trie) ->
+	get_letter(Letter, Trie, []).
 
-get_letter(_L, [], Acc) -> {undefined, Acc};
-get_letter(L, [{HeadLetter, HeadTail}|Tail], Acc) ->
+get_letter(_Letter, [], Acc) -> {undefined, Acc};
+get_letter(Letter, [{HeadLetter, HeadTail}|Tail], Acc) ->
 	Node = {HeadLetter, HeadTail},
-	if L == HeadLetter ->
+	if Letter == HeadLetter ->
 			NewAcc = Acc ++ Tail,
 			{Node, NewAcc};
-		true -> get_letter(L, Tail, [Node|Acc])
+		true -> get_letter(Letter, Tail, [Node|Acc])
 	end.
 
 
@@ -51,13 +56,13 @@ lookup(WordList, Trie) when is_list(WordList) ->
 	lookup(Word, Trie);
 lookup(<<>>, Trie) -> extract_words(Trie);
 lookup(<<LNum:8, Rest/binary>>, Trie) ->
-	L = <<LNum:8>>,
-	{Node, _} = get_letter(L, Trie),
+	Letter = <<LNum:8>>,
+	{Node, _} = get_letter(Letter, Trie),
 	case Node of
 		undefined -> [];
-		{L, LetterSubTrie} -> [L] ++ [lookup(Rest, LetterSubTrie)]
+		{Letter, LetterSubTrie} -> [Letter] ++ [lookup(Rest, LetterSubTrie)]
 	end.
 
 extract_words([]) -> [];
-extract_words({L, SubTrie}) ->[L] ++ [extract_words(SubTrie)];
+extract_words({Letter, SubTrie}) ->[Letter] ++ [extract_words(SubTrie)];
 extract_words([Head|Rest]) -> extract_words(Head) ++ extract_words(Rest).
