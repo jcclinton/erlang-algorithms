@@ -4,7 +4,8 @@
 -record(state, {
 								n,
 								worker_sup_pid,
-								remaining
+								remaining,
+								results
 							 }).
 
 
@@ -22,7 +23,7 @@ init(ParentPid) ->
 	random:seed(A,B,C),
 	io:format("genetic SERVER: started~n"),
 	gen_server:cast(self(), {init, ParentPid}),
-	N = 2,
+	N = 10,
 	{ok, #state{n=N}}.
 
 
@@ -35,22 +36,22 @@ handle_cast({init, ParentPid}, State) ->
 	{ok, WorkerSupPid} = supervisor:start_child(ParentPid, ChildSpec),
 	gen_server:cast(self(), create_first_gen),
 	{noreply, State#state{worker_sup_pid=WorkerSupPid}};
-handle_cast(success, State=#state{remaining=Remaining, n=N}) ->
+handle_cast({success, Result}, State=#state{remaining=Remaining, n=N, results=Results}) ->
 	NewRemaining = Remaining + 1,
 	if NewRemaining >= N ->
 			io:format("all received success~n");
-		true -> ok;
+		true -> ok
 	end,
-	{noreply, State#state{remaining=NewRemaining}};
+	{noreply, State#state{remaining=NewRemaining, results=[Result|Results]}};
 handle_cast(create_first_gen, State=#state{worker_sup_pid=Pid, n=N}) ->
 	lists:foreach(fun(_) ->
-		RandBytes = crypto:strong_rand_bytes(5),
-		%% drop first 4 bits since we only use 9 bytes
+		RandBytes = crypto:strong_rand_bytes(4),
 		<<_:4/integer, First:4/integer, Rest/binary>> = RandBytes,
-		Bytes = <<First:8/integer, Rest/binary>>,
+		%% hardcode first four bytes to 15 so they get ignored
+		Bytes = <<15:4/integer, First:4/integer, Rest/binary>>,
 		supervisor:start_child(Pid, [Bytes])
 	end, lists:seq(1, N)),
-	{noreply, State#state{remaining=0}};
+	{noreply, State#state{remaining=0, results=[]}};
 handle_cast(Msg, State) ->
 	io:format("genetic SERVER: received unknown cast: ~p~n", [Msg]),
 	{noreply, State}.
