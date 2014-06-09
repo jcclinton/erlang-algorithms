@@ -14,7 +14,7 @@ start_link(ServerPid, Bytes) ->
 run(ServerPid, Bytes) ->
 	%io:format("running worker~n"),
 	Num = calc_bytes(Bytes),
-	gen_server:cast(ServerPid, {success, Num}).
+	gen_server:cast(ServerPid, {success, {Num, Bytes}}).
 
 
 
@@ -45,7 +45,7 @@ calc_bytes(Bytes) ->
 				compute_equation(lists:reverse(Equation))
 		end
 	end,
-	io:format("equation: ~p~nresult: ~p~n~n", [lists:reverse(Equation), Result]),
+	%io:format("equation: ~p~nresult: ~p~n~n", [lists:reverse(Equation), Result]),
 	Result.
 
 

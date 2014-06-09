@@ -12,4 +12,4 @@ init([]) ->
 	Procs = [{genetic_server,
 					{genetic_server, start_link, [self()]},
 					permanent, 5000, worker, [genetic_server]}],
-	{ok, {{one_for_all, 3, 5}, Procs}}.
+	{ok, {{one_for_all, 0, 1}, Procs}}.

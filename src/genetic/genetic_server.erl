@@ -5,7 +5,8 @@
 								n,
 								worker_sup_pid,
 								remaining,
-								results
+								results,
+								target
 							 }).
 
 
@@ -13,6 +14,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
 -compile([export_all]).
 
+% size of our chromosome in bytes
+-define(Size, 4).
 
 
 start_link(ParentPid) ->
@@ -24,7 +27,8 @@ init(ParentPid) ->
 	io:format("genetic SERVER: started~n"),
 	gen_server:cast(self(), {init, ParentPid}),
 	N = 10,
-	{ok, #state{n=N}}.
+	Target = 42,
+	{ok, #state{n=N, target=Target}}.
 
 
 handle_call(_E, _From, State) ->
@@ -38,14 +42,34 @@ handle_cast({init, ParentPid}, State) ->
 	{noreply, State#state{worker_sup_pid=WorkerSupPid}};
 handle_cast({success, Result}, State=#state{remaining=Remaining, n=N, results=Results}) ->
 	NewRemaining = Remaining + 1,
-	if NewRemaining >= N ->
-			io:format("all received success~n");
-		true -> ok
+	CombinedResults = [Result|Results],
+	NewResults = if NewRemaining >= N ->
+			%io:format("all received success~n"),
+			gen_server:cast(self(), {breed, CombinedResults}),
+			[];
+		true -> CombinedResults
 	end,
-	{noreply, State#state{remaining=NewRemaining, results=[Result|Results]}};
+	{noreply, State#state{remaining=NewRemaining, results=NewResults}};
+handle_cast({breed, Results}, State=#state{target=Target}) ->
+	Done = lists:foldl(fun({Num, _}, Bool) ->
+							if Bool -> Bool;
+								Num == Target -> true;
+								true -> false
+							end
+				end, false, Results),
+	if Done ->
+			io:format("~p found~n", [Target]);
+		true ->
+			io:format("input parents: ~p~n", [Results]),
+			Fitness = get_fitness(Results, Target),
+			Children = breed(Fitness),
+			io:format("output children: ~p~n", [Children]),
+			ok
+	end,
+	{noreply, State#state{}};
 handle_cast(create_first_gen, State=#state{worker_sup_pid=Pid, n=N}) ->
 	lists:foreach(fun(_) ->
-		RandBytes = crypto:strong_rand_bytes(4),
+		RandBytes = crypto:strong_rand_bytes(?Size),
 		<<_:4/integer, First:4/integer, Rest/binary>> = RandBytes,
 		%% hardcode first four bytes to 15 so they get ignored
 		Bytes = <<15:4/integer, First:4/integer, Rest/binary>>,
@@ -68,3 +92,141 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, _State) ->
 	ok.
+
+
+%% private
+
+get_fitness(Results, Target) ->
+	get_fitness(Results, Target, []).
+	
+get_fitness([], _Target, Acc) -> Acc;
+get_fitness([{Num, Bytes}|Rest], Target, Acc) ->
+	Fitness = erlang:round(10000 * erlang:abs(1 / (Target - Num))),
+	get_fitness(Rest, Target, [{Fitness, Bytes}|Acc]).
+
+
+breed(Fitnesses) ->
+	Length = length(Fitnesses),
+	Children = lists:foldl(fun(_, AccIn) ->
+													{Fitness1, Fitnesses1} = select(Fitnesses),
+													{Fitness2, _} = select(Fitnesses1),
+													%io:format("out of all fitnesses: ~p~nselected 1: ~p~nselected 2: ~p~n", [Fitnesses, Fitness1, Fitness2]).
+													[{Fitness1, Fitness2} | AccIn]
+											end, [], lists:seq(1, Length div 2)),
+	NewChildren = breed_new_children(Children),
+	mutate_children(NewChildren).
+
+
+mutate_children(Children) ->
+	mutate_children(Children, []).
+
+mutate_children([], Acc) -> Acc;
+mutate_children([Child|Rest], Acc) ->
+	Chance = random:uniform(1000),
+	NewChild = if Chance == 1 ->
+		io:format("mutating: ~p~n", [Child]),
+		mutate(Child);
+							true -> Child
+						end,
+	mutate_children(Rest, [NewChild|Acc]).
+
+mutate(<<B1:8, B2:8, B3:8, B4:8, B5:8>>) ->
+	Offset = random:uniform(5),
+	NewB1 = if Offset == 1 -> mutate_byte(B1);
+							true -> B1
+					end,
+	NewB2 = if Offset == 1 -> mutate_byte(B2);
+							true -> B2
+					end,
+	NewB3 = if Offset == 1 -> mutate_byte(B3);
+							true -> B3
+					end,
+	NewB4 = if Offset == 1 -> mutate_byte(B4);
+							true -> B4
+					end,
+	NewB5 = if Offset == 1 -> mutate_byte(B5);
+							true -> B5
+					end,
+	<<NewB1:8, NewB2:8, NewB3:8, NewB4:8, NewB5:8>>.
+
+%% flips one bit in a byte
+mutate_byte(Byte) ->
+	BitOffset = random:uniform(8),
+	BitMask = 1 bsl (BitOffset-1),
+	Odd = Byte band BitMask,
+	if Odd == 1 -> Byte band (not BitMask);
+		true -> Byte bor BitMask
+	end.
+
+
+
+
+breed_new_children(Children) ->
+	breed_new_children(Children, []).
+
+breed_new_children([], Acc) -> Acc;
+breed_new_children([{{_, ParentByte1}, {_, ParentByte2}}|Rest], Acc) ->
+	Chance = random:uniform(10),
+	{NewChild1, NewChild2} = if Chance > 3 -> create_children_pair(ParentByte1, ParentByte2);
+											true -> {ParentByte1, ParentByte2}
+										end,
+		io:format("p1: ~p p2: ~p~n", [ParentByte1, ParentByte2]),
+		io:format("c1: ~p c2: ~p~n", [NewChild1, NewChild2]),
+	breed_new_children(Rest, [NewChild1|[NewChild2|Acc]]).
+
+
+%% crossover function
+create_children_pair(Bytes1, Bytes2) ->
+	CrossoverLength = random:uniform(?Size),
+	Length = size(Bytes1),
+	{Child1, Child2} = lists:foldl(fun(I, {Child1, Child2}) ->
+	%io:format("iter: ~p: byte1: ~p byte2: ~p~n", [I, Bytes1, Bytes2]),
+								Offset = I - 1,
+								OffsetBits = Offset * 8,
+								<<_:OffsetBits/unsigned-integer, B1:8/unsigned-integer, _/binary>> = Bytes1,
+								<<_:OffsetBits/unsigned-integer, B2:8/unsigned-integer, _/binary>> = Bytes2,
+								if I > CrossoverLength ->
+										NewChild1 = <<Child1/binary, B2:8>>,
+										NewChild2 = <<Child2/binary, B1:8>>,
+										%NewChild1 = <<B2:8, Child1/binary>>,
+										%NewChild2 = <<B1:8, Child2/binary>>,
+										{NewChild1, NewChild2};
+									true ->
+										NewChild1 = <<Child1/binary, B1:8>>,
+										NewChild2 = <<Child2/binary, B2:8>>,
+										%NewChild1 = <<B1:8, Child1/binary>>,
+										%NewChild2 = <<B2:8, Child2/binary>>,
+										{NewChild1, NewChild2}
+								end
+						end, {<<>>, <<>>}, lists:seq(1, Length)),
+	{Child1, Child2}.
+
+
+
+select(Fitnesses) ->
+	Total = get_fitness_total(Fitnesses),
+	Random = random:uniform(Total),
+	{_, Fitness, NewFitnesses} = lists:foldl(fun({Num, _}=Fit, {Floor, Found, NewFitnesses}) ->
+													Ceil = Floor + Num,
+													if Found == null ->
+															if Random > Floor andalso Random =< Ceil ->
+																	{Ceil, Fit, NewFitnesses};
+																true ->
+																	NewFits = [Fit|NewFitnesses],
+																	{Ceil, null, NewFits}
+															end;
+														true ->
+															NewFits = [Fit|NewFitnesses],
+															{Ceil, Found, NewFits}
+													end
+						end, {0, null, []}, Fitnesses),
+	{Fitness, NewFitnesses}.
+															
+
+
+get_fitness_total(Fitnesses) ->
+	get_fitness_total(Fitnesses, 0).
+
+get_fitness_total([], Total) -> Total;
+get_fitness_total([{Num, _}|Rest], Total) ->
+	get_fitness_total(Rest, Total + Num).
