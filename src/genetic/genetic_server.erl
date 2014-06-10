@@ -32,7 +32,9 @@ init(ParentPid) ->
 	random:seed(A,B,C),
 	io:format("genetic SERVER: started~n"),
 	gen_server:cast(self(), {init, ParentPid}),
+	% number of workers to spawn at each step
 	N = 10,
+	% target value we are trying to get
 	Target = 42,
 	{ok, #state{n=N, target=Target}}.
 
