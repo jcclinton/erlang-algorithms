@@ -7,4 +7,3 @@ Currently includes:
 * kd\_tree
 * quadtree
 * genetic
-
