@@ -17,7 +17,11 @@
 
 % size of our chromosome in bytes
 -define(Size, 4).
--define(MutationChance, 100).
+% 1 in MutationChance that a mutaton will occur
+-define(MutationChance, 1000).
+% number of generations algorithm runs before it ends
+-define(End, 10000).
+-define(bit, :1/unsigned-integer).
 
 
 start_link(ParentPid) ->
@@ -53,7 +57,6 @@ handle_cast({success, Result}, State=#state{remaining=Remaining, n=N, results=Re
 	end,
 	{noreply, State#state{remaining=NewRemaining, results=NewResults}};
 handle_cast({breed, Results}, State=#state{target=Target, generation=Generation}) ->
-	End = 1000,
 	Done = lists:foldl(fun({Num, _}, Bool) ->
 			%io:format("number: ~p~n", [Num]),
 							if Bool -> Bool;
@@ -63,13 +66,16 @@ handle_cast({breed, Results}, State=#state{target=Target, generation=Generation}
 				end, false, Results),
 	if Done ->
 			io:format("~p found after ~p generations~n", [Target, Generation]);
-		Generation > End ->
+		Generation > ?End ->
 			io:format("did not find after ~p generations~n", [Generation]);
 		true ->
 			%io:format("input parents: ~p~n", [Results]),
 			Fitness = get_fitness(Results, Target),
 			Total = get_fitness_total(Fitness),
-			io:format("breeding generation ~p with total fitness: ~p~n", [Generation, Total]),
+			if Generation rem 1000 == 1 ->
+					io:format("breeding generation ~p with total fitness: ~p~n", [Generation, Total]);
+				true -> ok
+			end,
 			Children = breed(Fitness),
 			gen_server:cast(self(), {next_step, Children})
 			%io:format("output children: ~p~n", [Children]),
@@ -182,7 +188,7 @@ breed_new_children(Parents) ->
 breed_new_children([], Acc) -> Acc;
 breed_new_children([{{_, ParentByte1}, {_, ParentByte2}}|Rest], Acc) ->
 	Chance = random:uniform(10),
-	{NewChild1, NewChild2} = if Chance == 1 -> create_children_pair(ParentByte1, ParentByte2);
+	{NewChild1, NewChild2} = if Chance > 3 -> create_children_pair(ParentByte1, ParentByte2);
 											true -> {ParentByte1, ParentByte2}
 										end,
 		%io:format("p1: ~p p2: ~p~n", [ParentByte1, ParentByte2]),
@@ -193,6 +199,7 @@ breed_new_children([{{_, ParentByte1}, {_, ParentByte2}}|Rest], Acc) ->
 %% crossover function
 create_children_pair(Bytes1, Bytes2) ->
 	CrossoverLength = random:uniform(?Size),
+	SpecificCrossoverLength = random:uniform(8),
 	Length = size(Bytes1),
 	{Child1, Child2} = lists:foldl(fun(I, {Child1, Child2}) ->
 	%io:format("iter: ~p: byte1: ~p byte2: ~p~n", [I, Bytes1, Bytes2]),
@@ -200,7 +207,12 @@ create_children_pair(Bytes1, Bytes2) ->
 								OffsetBits = Offset * 8,
 								<<_:OffsetBits/unsigned-integer, B1:8/unsigned-integer, _/binary>> = Bytes1,
 								<<_:OffsetBits/unsigned-integer, B2:8/unsigned-integer, _/binary>> = Bytes2,
-								if I > CrossoverLength ->
+								if I == CrossoverLength ->
+										{NewB1, NewB2} = crossover(B1, B2, SpecificCrossoverLength),
+										NewChild1 = <<Child1/binary, NewB2/binary>>,
+										NewChild2 = <<Child2/binary, NewB1/binary>>,
+										{NewChild1, NewChild2};
+									I > CrossoverLength ->
 										NewChild1 = <<Child1/binary, B2:8>>,
 										NewChild2 = <<Child2/binary, B1:8>>,
 										{NewChild1, NewChild2};
@@ -211,6 +223,48 @@ create_children_pair(Bytes1, Bytes2) ->
 								end
 						end, {<<>>, <<>>}, lists:seq(1, Length)),
 	{Child1, Child2}.
+
+
+%% crossover one byte into another
+%% very ugly
+crossover(B1, B2, Length) ->
+	<<N11?bit,N12?bit,N13?bit,N14?bit,N15?bit,N16?bit,N17?bit,N18?bit>> = <<B1:8/unsigned-integer>>,
+	<<N21?bit,N22?bit,N23?bit,N24?bit,N25?bit,N26?bit,N27?bit,N28?bit>> = <<B2:8/unsigned-integer>>,
+	case Length of
+		1 ->
+			NB1 = <<N11?bit,N22?bit,N23?bit,N24?bit,N25?bit,N26?bit,N27?bit,N28?bit>>,
+			NB2 = <<N21?bit,N12?bit,N13?bit,N14?bit,N15?bit,N16?bit,N17?bit,N18?bit>>,
+			{NB1, NB2};
+		2 ->
+			NB1 = <<N11?bit,N12?bit,N23?bit,N24?bit,N25?bit,N26?bit,N27?bit,N28?bit>>,
+			NB2 = <<N21?bit,N22?bit,N13?bit,N14?bit,N15?bit,N16?bit,N17?bit,N18?bit>>,
+			{NB1, NB2};
+		3 ->
+			NB1 = <<N11?bit,N12?bit,N13?bit,N24?bit,N25?bit,N26?bit,N27?bit,N28?bit>>,
+			NB2 = <<N21?bit,N22?bit,N23?bit,N14?bit,N15?bit,N16?bit,N17?bit,N18?bit>>,
+			{NB1, NB2};
+		4 ->
+			NB1 = <<N11?bit,N12?bit,N13?bit,N14?bit,N25?bit,N26?bit,N27?bit,N28?bit>>,
+			NB2 = <<N21?bit,N22?bit,N23?bit,N24?bit,N15?bit,N16?bit,N17?bit,N18?bit>>,
+			{NB1, NB2};
+		5 ->
+			NB1 = <<N11?bit,N12?bit,N13?bit,N14?bit,N15?bit,N26?bit,N27?bit,N28?bit>>,
+			NB2 = <<N21?bit,N22?bit,N23?bit,N24?bit,N25?bit,N16?bit,N17?bit,N18?bit>>,
+			{NB1, NB2};
+		6 ->
+			NB1 = <<N11?bit,N12?bit,N13?bit,N14?bit,N15?bit,N16?bit,N27?bit,N28?bit>>,
+			NB2 = <<N21?bit,N22?bit,N23?bit,N24?bit,N25?bit,N26?bit,N17?bit,N18?bit>>,
+			{NB1, NB2};
+		7 ->
+			NB1 = <<N11?bit,N12?bit,N13?bit,N14?bit,N15?bit,N16?bit,N17?bit,N28?bit>>,
+			NB2 = <<N21?bit,N22?bit,N23?bit,N24?bit,N25?bit,N26?bit,N27?bit,N18?bit>>,
+			{NB1, NB2};
+		8 ->
+			NB1 = <<N11?bit,N12?bit,N13?bit,N14?bit,N15?bit,N16?bit,N17?bit,N18?bit>>,
+			NB2 = <<N21?bit,N22?bit,N23?bit,N24?bit,N25?bit,N26?bit,N27?bit,N28?bit>>,
+			{NB1, NB2}
+		end.
+			
 
 
 
@@ -244,7 +298,6 @@ get_fitness_total([{Num, _}|Rest], Total) ->
 	get_fitness_total(Rest, Total + Num).
 
 
--define(bit, :1/unsigned-integer).
 
 iter_bits(Bytes) ->
 	iter_bits(Bytes, <<>>).
