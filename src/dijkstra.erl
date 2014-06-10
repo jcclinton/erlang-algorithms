@@ -1,6 +1,7 @@
 -module(dijkstra).
 
 -export([run/3, test/0]).
+-export([create_graph/2, get_path/3]).
 
 
 
@@ -9,7 +10,7 @@ create_node(Id, Distance, ConnectedNodeIds) ->
 	HasBeenVisited = false,
 	{node, Id, Distance, HasBeenVisited, ConnectedNodeIds}.
 
-mark_visited_node(Node) ->
+mark_node_as_visited(Node) ->
 	{node, Id, Distance, false, ConnectedNodeIds} = Node,
 	{node, Id, Distance, true, ConnectedNodeIds}.
 
@@ -47,8 +48,8 @@ get_node_value(Node, Value) ->
 create_graph(StartId, SideLength) ->
 	Size = SideLength * SideLength,
 	Funs = [fun bottom_check/3, fun top_check/3, fun left_check/3, fun right_check/3],
-	lists:foldr(fun(N, Graph) ->
-		Conns = lists:foldr(fun(Fun, Nodes) ->
+	lists:foldl(fun(N, Graph) ->
+		Conns = lists:foldl(fun(Fun, Nodes) ->
 							Fun(N, Nodes, SideLength)
 						end, [], Funs),
 		Distance = if StartId == N -> 0; true -> infinity end,
@@ -99,8 +100,8 @@ test() ->
 % runs the algorithm
 % returns the modified graph as output
 run(StartId, EndId, Graph) ->
-	CurrentNode = get_node(Graph, StartId),
-	check_current_node(Graph, CurrentNode, EndId).
+	StartNode = get_node(Graph, StartId),
+	check_current_node(Graph, StartNode, EndId).
 
 
 %% private functions
@@ -111,13 +112,13 @@ run(StartId, EndId, Graph) ->
 % repeat until end conditions are met
 % algorithm ends when endid is mark visited or there are no unvisited nodes with finite distance
 
-% should never get to the end of the graph, either of the end conditions will be met first
 check_current_node([], _CurrentNode, _EndId) -> no_connection;
 check_current_node(Graph, CurrentNode, EndId) ->
 	CurrId = get_node_id(CurrentNode),
 	Distance = get_node_distance(CurrentNode),
 	ConnectedNodeIds = get_node_connected(CurrentNode),
-	{Con, UnCon} = lists:foldl(fun(Node, {ConnectedNodes, UnConnectedNodes}) ->
+	% separate graph into connected and unconnected nodes
+	{Cons, UnCons} = lists:foldl(fun(Node, {ConnectedNodes, UnConnectedNodes}) ->
 								Id = get_node_id(Node),
 								IsMember = lists:member(Id, ConnectedNodeIds),
 								if IsMember ->
@@ -126,15 +127,19 @@ check_current_node(Graph, CurrentNode, EndId) ->
 										{ConnectedNodes, [Node|UnConnectedNodes]}
 								end
 	end, {[],[]}, Graph),
-	NewCon = calc_tentative_distance(Con, Distance),
-	NewCurrentNode = mark_visited_node(CurrentNode),
-	NewGraph1 = NewCon ++ UnCon,
-	NewGraph = replace_node(NewCurrentNode, NewGraph1),
+	UpdatedCons = calc_tentative_distance(Cons, Distance),
+	MarkedCurrentNode = mark_node_as_visited(CurrentNode),
+	% put marked node back into graph
+	NewGraph = replace_node(MarkedCurrentNode, UpdatedCons ++ UnCons),
 	if EndId == CurrId ->
+			% algorithm is finished
 			NewGraph;
 		true ->
+			% find the next node
+			% this node will be an unvisited node in the graph that has the shortest distance
 			NextNode = get_next_node(NewGraph),
 			if NextNode == [] ->
+				% no unvisited nodes were found with a finite distance
 				no_connection;
 			true ->
 				check_current_node(NewGraph, NextNode, EndId)
@@ -167,7 +172,6 @@ get_next_node([Node|Rest], Next) ->
 
 
 % replaces a node in the graph
-% used to mark a node as visited
 replace_node(Node, Graph) ->
 	replace_node(Node, Graph, []).
 replace_node(_Node, [], Acc) -> Acc;
@@ -191,7 +195,7 @@ get_node([Node|Graph], LookupId) ->
 		true -> get_node(Graph, LookupId)
 	end.
 
-% calculates tentative distance
+% calculates tentative distance and updates any nodes that need it
 % tentative distance is the distance from node A to origin via Node B
 % if node A's original distance is smaller than the tentative distance,
 % node A will keep its original value
@@ -204,6 +208,7 @@ calc_tentative_distance([Node|Rest], CurrDistance, Acc) ->
 	Visited = get_node_visited(Node),
 	EdgeLength = 1,
 	NewDistance =
+							%% only update nodes distance if it has not been visited
 							if not Visited ->
 								CurrDistPlusEdge = CurrDistance + EdgeLength,
 								if Distance == infinity -> CurrDistPlusEdge;
@@ -212,10 +217,11 @@ calc_tentative_distance([Node|Rest], CurrDistance, Acc) ->
 												true -> CurrDistPlusEdge
 											end
 								end;
-								true -> Distance
+							true -> Distance
 							end,
 	NewNode = update_node_distance(NewDistance, Node),
 	calc_tentative_distance(Rest, CurrDistance, [NewNode|Acc]).
+
 
 
 %% path functions
