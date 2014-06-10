@@ -2,13 +2,13 @@
 -behavior(gen_server).
 
 -record(state, {
-								n,
-								worker_sup_pid,
-								remaining,
-								results,
-								target,
-								generation
-							 }).
+				n,
+				worker_sup_pid,
+				remaining,
+				results,
+				target,
+				generation
+			 }).
 
 
 -export([start_link/1]).
@@ -189,10 +189,10 @@ breed_new_children([], Acc) -> Acc;
 breed_new_children([{{_, ParentByte1}, {_, ParentByte2}}|Rest], Acc) ->
 	Chance = random:uniform(10),
 	{NewChild1, NewChild2} = if Chance > 3 -> create_children_pair(ParentByte1, ParentByte2);
-											true -> {ParentByte1, ParentByte2}
-										end,
-		%io:format("p1: ~p p2: ~p~n", [ParentByte1, ParentByte2]),
-		%io:format("c1: ~p c2: ~p~n", [NewChild1, NewChild2]),
+		true -> {ParentByte1, ParentByte2}
+	end,
+	%io:format("p1: ~p p2: ~p~n", [ParentByte1, ParentByte2]),
+	%io:format("c1: ~p c2: ~p~n", [NewChild1, NewChild2]),
 	breed_new_children(Rest, [NewChild1|[NewChild2|Acc]]).
 
 
@@ -202,26 +202,26 @@ create_children_pair(Bytes1, Bytes2) ->
 	SpecificCrossoverLength = random:uniform(8),
 	Length = size(Bytes1),
 	{Child1, Child2} = lists:foldl(fun(I, {Child1, Child2}) ->
-	%io:format("iter: ~p: byte1: ~p byte2: ~p~n", [I, Bytes1, Bytes2]),
-								Offset = I - 1,
-								OffsetBits = Offset * 8,
-								<<_:OffsetBits/unsigned-integer, B1:8/unsigned-integer, _/binary>> = Bytes1,
-								<<_:OffsetBits/unsigned-integer, B2:8/unsigned-integer, _/binary>> = Bytes2,
-								if I == CrossoverLength ->
-										{NewB1, NewB2} = crossover(B1, B2, SpecificCrossoverLength),
-										NewChild1 = <<Child1/binary, NewB2/binary>>,
-										NewChild2 = <<Child2/binary, NewB1/binary>>,
-										{NewChild1, NewChild2};
-									I > CrossoverLength ->
-										NewChild1 = <<Child1/binary, B2:8>>,
-										NewChild2 = <<Child2/binary, B1:8>>,
-										{NewChild1, NewChild2};
-									true ->
-										NewChild1 = <<Child1/binary, B1:8>>,
-										NewChild2 = <<Child2/binary, B2:8>>,
-										{NewChild1, NewChild2}
-								end
-						end, {<<>>, <<>>}, lists:seq(1, Length)),
+			%io:format("iter: ~p: byte1: ~p byte2: ~p~n", [I, Bytes1, Bytes2]),
+			Offset = I - 1,
+			OffsetBits = Offset * 8,
+			<<_:OffsetBits/unsigned-integer, B1:8/unsigned-integer, _/binary>> = Bytes1,
+			<<_:OffsetBits/unsigned-integer, B2:8/unsigned-integer, _/binary>> = Bytes2,
+			if I == CrossoverLength ->
+					{NewB1, NewB2} = crossover(B1, B2, SpecificCrossoverLength),
+					NewChild1 = <<Child1/binary, NewB2/binary>>,
+					NewChild2 = <<Child2/binary, NewB1/binary>>,
+					{NewChild1, NewChild2};
+				I > CrossoverLength ->
+					NewChild1 = <<Child1/binary, B2:8>>,
+					NewChild2 = <<Child2/binary, B1:8>>,
+					{NewChild1, NewChild2};
+				true ->
+					NewChild1 = <<Child1/binary, B1:8>>,
+					NewChild2 = <<Child2/binary, B2:8>>,
+					{NewChild1, NewChild2}
+			end
+	end, {<<>>, <<>>}, lists:seq(1, Length)),
 	{Child1, Child2}.
 
 
@@ -272,20 +272,21 @@ crossover(B1, B2, Length) ->
 select(Fitnesses) ->
 	Total = get_fitness_total(Fitnesses),
 	Random = random:uniform(Total),
-	{_, Fitness, NewFitnesses} = lists:foldl(fun({Num, _}=Fit, {Floor, Found, NewFitnesses}) ->
-													Ceil = Floor + Num,
-													if Found == null ->
-															if Random > Floor andalso Random =< Ceil ->
-																	{Ceil, Fit, NewFitnesses};
-																true ->
-																	NewFits = [Fit|NewFitnesses],
-																	{Ceil, null, NewFits}
-															end;
-														true ->
-															NewFits = [Fit|NewFitnesses],
-															{Ceil, Found, NewFits}
-													end
-						end, {0, null, []}, Fitnesses),
+	{_, Fitness, NewFitnesses} =
+		lists:foldl(fun({Num, _}=Fit, {Floor, Found, NewFitnesses}) ->
+			Ceil = Floor + Num,
+			if Found == null ->
+					if Random > Floor andalso Random =< Ceil ->
+							{Ceil, Fit, NewFitnesses};
+						true ->
+							NewFits = [Fit|NewFitnesses],
+							{Ceil, null, NewFits}
+					end;
+				true ->
+					NewFits = [Fit|NewFitnesses],
+					{Ceil, Found, NewFits}
+			end
+		end, {0, null, []}, Fitnesses),
 	{Fitness, NewFitnesses}.
 															
 
@@ -296,12 +297,3 @@ get_fitness_total(Fitnesses) ->
 get_fitness_total([], Total) -> Total;
 get_fitness_total([{Num, _}|Rest], Total) ->
 	get_fitness_total(Rest, Total + Num).
-
-
-
-iter_bits(Bytes) ->
-	iter_bits(Bytes, <<>>).
-iter_bits(<<>>, Acc) -> Acc;
-iter_bits(<<N1?bit,N2?bit,N3?bit,N4?bit,N5?bit,N6?bit,N7?bit,N8?bit, Rest/binary>>, Acc) ->
-	io:format("bit: ~p~n", [N8]),
-	iter_bits(Rest, <<Acc/binary, N1?bit, N2?bit, N3?bit, N4?bit, N5?bit, N6?bit, N7?bit, N8?bit>>).
