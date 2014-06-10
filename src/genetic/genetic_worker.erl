@@ -14,10 +14,12 @@ start_link(ServerPid, Bytes) ->
 run(ServerPid, Bytes) ->
 	%io:format("running worker~n"),
 	Num = calc_bytes(Bytes),
+	%% send back result and the bytes
 	gen_server:cast(ServerPid, {success, {Num, Bytes}}).
 
 
 
+%decodes bytes, then calculates them
 calc_bytes(Bytes) ->
 	Symbols = decode_bytes(Bytes),
 
@@ -39,6 +41,7 @@ calc_bytes(Bytes) ->
 	Result = if Length == 0 -> 0;
 		true ->
 			[Head|Rest] = lists:reverse(Equation),
+			% if there is a dangling symbol, drop it
 			if is_atom(Head) ->
 				compute_equation(lists:reverse(Rest));
 			true ->
@@ -49,6 +52,7 @@ calc_bytes(Bytes) ->
 	Result.
 
 
+% computes decoded equation
 compute_equation([N]) -> N;
 compute_equation(Equation) ->
 	compute_equation(Equation, null).
@@ -75,6 +79,7 @@ compute_equation_step(N1, N2, S) ->
 
 
 
+%% takes in bytes and converts them to their numbers or symbols
 decode_bytes(Bytes) ->
 	decode_bytes(Bytes, []).
 
