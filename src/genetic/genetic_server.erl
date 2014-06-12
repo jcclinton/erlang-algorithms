@@ -20,7 +20,6 @@
 -define(MutationChance, 1000).
 % number of generations algorithm runs before it ends
 -define(End, 100).
--define(bit, :1/unsigned-integer).
 
 run() ->
 	gen_server:cast(genetic_server, create_first_gen).
@@ -143,7 +142,7 @@ breed_new_children(Parents) ->
 breed_new_children([], Acc) -> Acc;
 breed_new_children([{{_, ParentByte1}, {_, ParentByte2}}|Rest], Acc) ->
 	Chance = random:uniform(10),
-	{NewChild1, NewChild2} = if Chance > 3 -> create_children_pair(ParentByte1, ParentByte2);
+	{NewChild1, NewChild2} = if Chance > 3 -> crossover:create_children_pair(ParentByte1, ParentByte2, ?Size);
 		true -> {ParentByte1, ParentByte2}
 	end,
 	%io:format("p1: ~p p2: ~p~n", [ParentByte1, ParentByte2]),
@@ -151,75 +150,6 @@ breed_new_children([{{_, ParentByte1}, {_, ParentByte2}}|Rest], Acc) ->
 	breed_new_children(Rest, [NewChild1|[NewChild2|Acc]]).
 
 
-%% crossover function
-create_children_pair(Bytes1, Bytes2) ->
-	CrossoverLength = random:uniform(?Size),
-	SpecificCrossoverLength = random:uniform(8),
-	Length = size(Bytes1),
-	{Child1, Child2} = lists:foldl(fun(I, {Child1, Child2}) ->
-			%io:format("iter: ~p: byte1: ~p byte2: ~p~n", [I, Bytes1, Bytes2]),
-			Offset = I - 1,
-			OffsetBits = Offset * 8,
-			<<_:OffsetBits/unsigned-integer, B1:8/unsigned-integer, _/binary>> = Bytes1,
-			<<_:OffsetBits/unsigned-integer, B2:8/unsigned-integer, _/binary>> = Bytes2,
-			if I == CrossoverLength ->
-					{NewB1, NewB2} = crossover(B1, B2, SpecificCrossoverLength),
-					NewChild1 = <<Child1/binary, NewB2/binary>>,
-					NewChild2 = <<Child2/binary, NewB1/binary>>,
-					{NewChild1, NewChild2};
-				I > CrossoverLength ->
-					NewChild1 = <<Child1/binary, B2:8>>,
-					NewChild2 = <<Child2/binary, B1:8>>,
-					{NewChild1, NewChild2};
-				true ->
-					NewChild1 = <<Child1/binary, B1:8>>,
-					NewChild2 = <<Child2/binary, B2:8>>,
-					{NewChild1, NewChild2}
-			end
-	end, {<<>>, <<>>}, lists:seq(1, Length)),
-	{Child1, Child2}.
-
-
-%% crossover one byte into another
-%% very ugly
-crossover(B1, B2, Length) ->
-	<<N11?bit,N12?bit,N13?bit,N14?bit,N15?bit,N16?bit,N17?bit,N18?bit>> = <<B1:8/unsigned-integer>>,
-	<<N21?bit,N22?bit,N23?bit,N24?bit,N25?bit,N26?bit,N27?bit,N28?bit>> = <<B2:8/unsigned-integer>>,
-	case Length of
-		1 ->
-			NB1 = <<N11?bit,N22?bit,N23?bit,N24?bit,N25?bit,N26?bit,N27?bit,N28?bit>>,
-			NB2 = <<N21?bit,N12?bit,N13?bit,N14?bit,N15?bit,N16?bit,N17?bit,N18?bit>>,
-			{NB1, NB2};
-		2 ->
-			NB1 = <<N11?bit,N12?bit,N23?bit,N24?bit,N25?bit,N26?bit,N27?bit,N28?bit>>,
-			NB2 = <<N21?bit,N22?bit,N13?bit,N14?bit,N15?bit,N16?bit,N17?bit,N18?bit>>,
-			{NB1, NB2};
-		3 ->
-			NB1 = <<N11?bit,N12?bit,N13?bit,N24?bit,N25?bit,N26?bit,N27?bit,N28?bit>>,
-			NB2 = <<N21?bit,N22?bit,N23?bit,N14?bit,N15?bit,N16?bit,N17?bit,N18?bit>>,
-			{NB1, NB2};
-		4 ->
-			NB1 = <<N11?bit,N12?bit,N13?bit,N14?bit,N25?bit,N26?bit,N27?bit,N28?bit>>,
-			NB2 = <<N21?bit,N22?bit,N23?bit,N24?bit,N15?bit,N16?bit,N17?bit,N18?bit>>,
-			{NB1, NB2};
-		5 ->
-			NB1 = <<N11?bit,N12?bit,N13?bit,N14?bit,N15?bit,N26?bit,N27?bit,N28?bit>>,
-			NB2 = <<N21?bit,N22?bit,N23?bit,N24?bit,N25?bit,N16?bit,N17?bit,N18?bit>>,
-			{NB1, NB2};
-		6 ->
-			NB1 = <<N11?bit,N12?bit,N13?bit,N14?bit,N15?bit,N16?bit,N27?bit,N28?bit>>,
-			NB2 = <<N21?bit,N22?bit,N23?bit,N24?bit,N25?bit,N26?bit,N17?bit,N18?bit>>,
-			{NB1, NB2};
-		7 ->
-			NB1 = <<N11?bit,N12?bit,N13?bit,N14?bit,N15?bit,N16?bit,N17?bit,N28?bit>>,
-			NB2 = <<N21?bit,N22?bit,N23?bit,N24?bit,N25?bit,N26?bit,N27?bit,N18?bit>>,
-			{NB1, NB2};
-		8 ->
-			NB1 = <<N11?bit,N12?bit,N13?bit,N14?bit,N15?bit,N16?bit,N17?bit,N18?bit>>,
-			NB2 = <<N21?bit,N22?bit,N23?bit,N24?bit,N25?bit,N26?bit,N27?bit,N28?bit>>,
-			{NB1, NB2}
-		end.
-			
 
 
 
