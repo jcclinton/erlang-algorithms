@@ -3,7 +3,6 @@
 
 -record(state, {
 				n,
-				worker_sup_pid,
 				remaining,
 				results,
 				target,
@@ -11,7 +10,7 @@
 			 }).
 
 
--export([start_link/1]).
+-export([start_link/0, run/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
 -compile([export_all]).
 
@@ -20,18 +19,20 @@
 % 1 in MutationChance that a mutaton will occur
 -define(MutationChance, 1000).
 % number of generations algorithm runs before it ends
--define(End, 10000).
+-define(End, 100).
 -define(bit, :1/unsigned-integer).
 
+run() ->
+	gen_server:cast(genetic_server, create_first_gen).
 
-start_link(ParentPid) ->
-	gen_server:start_link(?MODULE, ParentPid, []).
 
-init(ParentPid) ->
+start_link() ->
+	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+init([]) ->
 	<<A:32, B:32, C:32>> = crypto:rand_bytes(12),
 	random:seed(A,B,C),
 	io:format("genetic SERVER: started~n"),
-	gen_server:cast(self(), {init, ParentPid}),
 	% number of workers to spawn at each step
 	N = 10,
 	% target value we are trying to get
@@ -42,12 +43,6 @@ init(ParentPid) ->
 handle_call(_E, _From, State) ->
 	{noreply, State}.
 
-handle_cast({init, ParentPid}, State) ->
-	Name = genetic_worker_sup,
-	ChildSpec = {Name, {Name, start_link, [self()]}, permanent, 10000, supervisor, [Name]},
-	{ok, WorkerSupPid} = supervisor:start_child(ParentPid, ChildSpec),
-	gen_server:cast(self(), create_first_gen),
-	{noreply, State#state{worker_sup_pid=WorkerSupPid}};
 handle_cast({success, Result}, State=#state{remaining=Remaining, n=N, results=Results}) ->
 	NewRemaining = Remaining + 1,
 	CombinedResults = [Result|Results],
@@ -83,18 +78,18 @@ handle_cast({breed, Results}, State=#state{target=Target, generation=Generation}
 			%io:format("output children: ~p~n", [Children]),
 	end,
 	{noreply, State#state{generation=Generation+1, results=[], remaining=0}};
-handle_cast({next_step, Children}, State=#state{worker_sup_pid=Pid}) ->
+handle_cast({next_step, Children}, State) ->
 	lists:foreach(fun(Bytes) ->
-		supervisor:start_child(Pid, [Bytes])
+		supervisor:start_child(genetic_worker_sup, [Bytes])
 	end, Children),
 	{noreply, State#state{}};
-handle_cast(create_first_gen, State=#state{worker_sup_pid=Pid, n=N}) ->
+handle_cast(create_first_gen, State=#state{n=N}) ->
 	lists:foreach(fun(_) ->
 		RandBytes = crypto:strong_rand_bytes(?Size),
 		<<_:4/integer, First:4/integer, Rest/binary>> = RandBytes,
 		%% hardcode first four bytes to 15 so they get ignored
 		Bytes = <<15:4/integer, First:4/integer, Rest/binary>>,
-		supervisor:start_child(Pid, [Bytes])
+		supervisor:start_child(genetic_worker_sup, [Bytes])
 	end, lists:seq(1, N)),
 	{noreply, State#state{remaining=0, results=[], generation=0}};
 handle_cast(Msg, State) ->

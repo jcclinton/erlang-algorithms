@@ -1,21 +1,20 @@
 -module(genetic_worker).
 
 
--export([start_link/2, run/2]).
+-export([start_link/1, run/1]).
 -compile([export_all]).
 
 
 
-start_link(ServerPid, Bytes) ->
-	%io:format("starting worker with pid ~p and bytes ~p~n", [ServerPid, Bytes]),
-	spawn_link(?MODULE, run, [ServerPid, Bytes]).
+start_link(Bytes) ->
+	%io:format("starting worker with bytes ~p~n", [Bytes]),
+	spawn_link(?MODULE, run, [Bytes]).
 
 
-run(ServerPid, Bytes) ->
-	%io:format("running worker~n"),
+run(Bytes) ->
 	Num = calc_bytes(Bytes),
 	%% send back result and the bytes
-	gen_server:cast(ServerPid, {success, {Num, Bytes}}).
+	gen_server:cast(genetic_server, {success, {Num, Bytes}}).
 
 
 
