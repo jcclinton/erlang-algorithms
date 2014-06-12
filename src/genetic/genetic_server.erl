@@ -66,13 +66,13 @@ handle_cast({breed, Results}, State=#state{target=Target, generation=Generation}
 			io:format("did not find after ~p generations~n", [Generation]);
 		true ->
 			%io:format("input parents: ~p~n", [Results]),
-			Fitness = get_fitness(Results, Target),
-			Total = get_fitness_total(Fitness),
+			Fitness = fitness:get_fitness(Results, Target),
+			Total = fitness:get_fitness_total(Fitness),
 			if Generation rem 1000 == 1 ->
 					io:format("breeding generation ~p with total fitness: ~p~n", [Generation, Total]);
 				true -> ok
 			end,
-			Children = breed(Fitness),
+			Children = breed:breed(Fitness, ?MutationChance, ?Size),
 			gen_server:cast(self(), {next_step, Children})
 			%io:format("output children: ~p~n", [Children]),
 	end,
@@ -107,78 +107,3 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, _State) ->
 	ok.
-
-
-%% private
-
-% calculates fitness from the calculated results
-get_fitness(Results, Target) ->
-	get_fitness(Results, Target, []).
-get_fitness([], _Target, Acc) -> Acc;
-get_fitness([{Num, Bytes}|Rest], Target, Acc) ->
-	Fitness = erlang:round(10000 * erlang:abs(1 / (Target - Num))),
-	get_fitness(Rest, Target, [{Fitness, Bytes}|Acc]).
-
-
-% takes fitness list and data, then selects parents, breeds and mutates children
-breed(Fitnesses) ->
-	Length = length(Fitnesses),
-	Parents = lists:foldl(fun(_, AccIn) ->
-													{Fitness1, Fitnesses1} = select(Fitnesses),
-													{Fitness2, _} = select(Fitnesses1),
-													%io:format("out of all fitnesses: ~p~nselected 1: ~p~nselected 2: ~p~n", [Fitnesses, Fitness1, Fitness2]).
-													[{Fitness1, Fitness2} | AccIn]
-											end, [], lists:seq(1, Length div 2)),
-	NewChildren = breed_new_children(Parents),
-	mutate:mutate_children(NewChildren, ?MutationChance, ?Size).
-
-
-
-
-
-% breeds new children from selected parents
-breed_new_children(Parents) ->
-	breed_new_children(Parents, []).
-breed_new_children([], Acc) -> Acc;
-breed_new_children([{{_, ParentByte1}, {_, ParentByte2}}|Rest], Acc) ->
-	Chance = random:uniform(10),
-	{NewChild1, NewChild2} = if Chance > 3 -> crossover:create_children_pair(ParentByte1, ParentByte2, ?Size);
-		true -> {ParentByte1, ParentByte2}
-	end,
-	%io:format("p1: ~p p2: ~p~n", [ParentByte1, ParentByte2]),
-	%io:format("c1: ~p c2: ~p~n", [NewChild1, NewChild2]),
-	breed_new_children(Rest, [NewChild1|[NewChild2|Acc]]).
-
-
-
-
-
-% randomly selects a byte, the higher its fitness, the higher chance it has of being selected
-select(Fitnesses) ->
-	Total = get_fitness_total(Fitnesses),
-	Random = random:uniform(Total),
-	{_, Fitness, NewFitnesses} =
-		lists:foldl(fun({Num, _}=Fit, {Floor, Found, NewFitnesses}) ->
-			Ceil = Floor + Num,
-			if Found == null ->
-					if Random > Floor andalso Random =< Ceil ->
-							{Ceil, Fit, NewFitnesses};
-						true ->
-							NewFits = [Fit|NewFitnesses],
-							{Ceil, null, NewFits}
-					end;
-				true ->
-					NewFits = [Fit|NewFitnesses],
-					{Ceil, Found, NewFits}
-			end
-		end, {0, null, []}, Fitnesses),
-	{Fitness, NewFitnesses}.
-															
-
-
-% calculates the combined fitness score of all the bytes
-get_fitness_total(Fitnesses) ->
-	get_fitness_total(Fitnesses, 0).
-get_fitness_total([], Total) -> Total;
-get_fitness_total([{Num, _}|Rest], Total) ->
-	get_fitness_total(Rest, Total + Num).
