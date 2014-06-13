@@ -2,7 +2,9 @@
 
 -export([run/3, test/0]).
 -export([create_graph/2, get_path/3]).
+-export([create_queue/0, insert_queue/2]).
 
+-compile([export_all]).
 
 
 %% node functions
@@ -54,8 +56,8 @@ create_graph(StartId, SideLength) ->
 						end, [], Funs),
 		Distance = if StartId == N -> 0; true -> infinity end,
 		Node = create_node(N, Distance, Conns),
-		[Node|Graph]
-	end, [], lists:seq(1, Size)).
+		insert_graph(Node, Graph)
+	end, gb_trees:empty(), lists:seq(1, Size)).
 
 bottom_check(N, Nodes, SideLength) ->
 	if N < SideLength + 1 -> Nodes;
@@ -75,7 +77,120 @@ right_check(N, Nodes, SideLength) ->
 		true -> [N+1|Nodes]
 	end.
 
+flatten_graph(Graph) -> gb_trees:values(Graph).
+
+insert_graph(Node, Graph) ->
+	N = get_node_id(Node),
+	gb_trees:enter(N, Node, Graph).
+
 %% end graph functions
+
+%% queue functions
+
+insert_tree_queue(Node, Tree) ->
+	Id = get_node_id(Node),
+	gb_trees:enter(Id, Node, Tree).
+
+pop_tree_queue(Tree) ->
+	List = gb_trees:to_list(Tree),
+	{Smallest, NewList} = get_queue_smallest(List),
+	SortedOrddict = lists:sort(fun({Aid, _}, {Bid, _}) ->
+		Aid =< Bid
+	end, NewList),
+	OutList = gb_trees:from_orddict(SortedOrddict),
+	{Smallest, OutList}.
+
+
+get_queue_smallest(List) ->
+%io:format("queue list: ~p~n", [List]),
+	get_queue_smallest(List, {none, []}).
+
+get_queue_smallest([], Acc) -> Acc;
+get_queue_smallest([{Id, Node}|Rest], {none, List}) ->
+	Distance = get_node_distance(Node),
+	if Distance == infinity ->
+			get_queue_smallest(Rest, {none, [{Id, Node}|List]});
+		true ->
+			get_queue_smallest(Rest, {Node, List})
+	end;
+get_queue_smallest([{Id, Node}|Rest], {Smallest, List}) ->
+	Distance = get_node_distance(Node),
+	SmallDistance = get_node_distance(Smallest),
+	if Distance < SmallDistance ->
+			SmallId = get_node_id(Smallest),
+			get_queue_smallest(Rest, {Node, [{SmallId, Smallest} | List]});
+		true ->
+			get_queue_smallest(Rest, {Smallest, [{Id, Node}|List]})
+	end.
+	
+fill_tree_queue(Nodes) ->
+	lists:foldl(fun(Node, TreeIn) ->
+		Id = get_node_id(Node),
+		gb_trees:insert(Id, Node, TreeIn)
+	end, gb_trees:empty(), Nodes).
+
+% searches queue for id
+% returns node plus queue without that node
+get_tree_queue_node(Id, Tree) -> gb_trees:lookup(Id, Tree).
+
+
+
+
+
+
+
+create_queue() -> [].
+
+
+insert_queue(Node, []) ->
+	Distance = get_node_distance(Node),
+	[{Distance, [Node]}];
+insert_queue(Node, [{PrioDist, PrioList}=Prio|Rest] = Queue) ->
+	Distance = get_node_distance(Node),
+	if Distance < PrioDist ->
+			[{Distance, [Node]} | Queue];
+		Distance == PrioDist ->
+			NewPrioList = [Node|PrioList],
+			[{PrioDist, NewPrioList}|Rest];
+		true ->
+			[Prio | insert_queue(Node, Rest)]
+	end.
+
+
+% gets next node from queue
+% wont return element with infinity queue priorty
+pop_queue([]) -> none;
+pop_queue([{infinity, _PrioList}=Head | Rest]) -> {none, [Head | Rest]};
+pop_queue([{Distance, [Head|Tail]} | Rest]) ->
+	if length(Tail) == 0 -> {Head, Rest};
+		true ->
+			{Head, [{Distance, Tail} | Rest]}
+	end.
+
+
+fill_queue(Nodes) ->
+	lists:foldl(fun(Node, QueueIn) ->
+		insert_queue(Node, QueueIn)
+	end, create_queue(), Nodes).
+
+% searches queue for id
+% returns node plus queue without that node
+get_queue_node(_Id, []) -> {none, []};
+get_queue_node(Id, [{_Distance, []} | Rest]) -> get_queue_node(Id, Rest);
+get_queue_node(Id, [{Distance, [Head|Tail]} | Rest]) ->
+	HeadId = get_node_id(Head),
+	if HeadId == Id ->
+			QueueOut = [{Distance, Tail} | Rest],
+			{Head, QueueOut};
+		true ->
+			{Found, NewTail} = get_queue_node(Id, [{Distance, Tail} | Rest]),
+			{Found, [Head | NewTail]}
+	end.
+
+
+
+
+%% end queue functions
 
 
 %% public api
@@ -91,7 +206,8 @@ test() ->
 		no_connection ->
 			io:format("no connection from start to finish was found in this graph~n");
 		_ ->
-			Path = get_path(Start, End, OutGraph),
+			OutList = gb_trees:values(OutGraph),
+			Path = get_path(Start, End, OutList),
 			io:format("final path starting at ~p and ending at ~p: ~p~n", [Start, End, Path])
 	end,
 	ok.
@@ -99,9 +215,11 @@ test() ->
 
 % runs the algorithm
 % returns the modified graph as output
-run(StartId, EndId, Graph) ->
-	StartNode = get_node(Graph, StartId),
-	check_current_node(Graph, StartNode, EndId).
+run(_StartId, EndId, Graph) ->
+	Nodes = flatten_graph(Graph),
+	Queue = fill_tree_queue(Nodes),
+	{StartNode, NextQueue} = pop_tree_queue(Queue),
+	check_current_node(Graph, NextQueue, StartNode, EndId).
 
 
 %% private functions
@@ -112,88 +230,48 @@ run(StartId, EndId, Graph) ->
 % repeat until end conditions are met
 % algorithm ends when endid is mark visited or there are no unvisited nodes with finite distance
 
-check_current_node([], _CurrentNode, _EndId) -> no_connection;
-check_current_node(Graph, CurrentNode, EndId) ->
+check_current_node(Graph, Queue, CurrentNode, EndId) ->
 	CurrId = get_node_id(CurrentNode),
 	Distance = get_node_distance(CurrentNode),
 	ConnectedNodeIds = get_node_connected(CurrentNode),
-	% separate graph into connected and unconnected nodes
-	{Cons, UnCons} = lists:foldl(fun(Node, {ConnectedNodes, UnConnectedNodes}) ->
-								Id = get_node_id(Node),
-								IsMember = lists:member(Id, ConnectedNodeIds),
-								if IsMember ->
-										{[Node|ConnectedNodes], UnConnectedNodes};
-									true ->
-										{ConnectedNodes, [Node|UnConnectedNodes]}
-								end
-	end, {[],[]}, Graph),
+	% retrieves unvisited and connected nodes
+	% also returns queue without these nodes
+	%io:format("input queue list: ~p~n", [gb_trees:to_list(Queue)]),
+	%io:format("input queue tree: ~p~n", [Queue]),
+	Cons = lists:foldl(fun(Id, ConsList) ->
+						%Result = get_tree_queue_node(Id, Queue),
+						Result = gb_trees:lookup(Id, Queue),
+	%io:format("result for id ~p: ~p~n", [Id, Result]),
+						case Result of
+							none -> ConsList;
+							{value, Node} -> [Node|ConsList]
+						end
+	end, [], ConnectedNodeIds),
 	UpdatedCons = calc_tentative_distance(Cons, Distance),
+	UpdatedQueue = lists:foldl(fun(Node, QueueIn) ->
+		insert_tree_queue(Node, QueueIn)
+	end, Queue, UpdatedCons),
+	%io:format("updated queue list: ~p~n", [gb_trees:values(UpdatedQueue)]),
 	MarkedCurrentNode = mark_node_as_visited(CurrentNode),
+	NewGraph = insert_graph(MarkedCurrentNode, Graph),
 	% put marked node back into graph
-	NewGraph = replace_node(MarkedCurrentNode, UpdatedCons ++ UnCons),
 	if EndId == CurrId ->
 			% algorithm is finished
 			NewGraph;
 		true ->
 			% find the next node
-			% this node will be an unvisited node in the graph that has the shortest distance
-			NextNode = get_next_node(NewGraph),
-			if NextNode == [] ->
+			{NextNode, NextQueue} = pop_tree_queue(UpdatedQueue),
+			if NextNode == none ->
 				% no unvisited nodes were found with a finite distance
 				no_connection;
 			true ->
-				check_current_node(NewGraph, NextNode, EndId)
+				check_current_node(NewGraph, NextQueue, NextNode, EndId)
 			end
 	end.
 
-% returns an unvisited node with the lowest distance
-get_next_node(Nodes) ->
-	get_next_node(Nodes, []).
-
-get_next_node([], Next) -> Next;
-get_next_node([Node|Rest], []) ->
-	Distance = get_node_distance(Node),
-	HasVisited = get_node_visited(Node),
-	Next = if HasVisited orelse Distance == infinity -> [];
-					true ->
-						Node
-				end,
-	get_next_node(Rest, Next);
-get_next_node([Node|Rest], Next) ->
-	Distance = get_node_distance(Node),
-	HasVisited = get_node_visited(Node),
-	NextDistance = get_node_distance(Next),
-	NewNext = if not HasVisited andalso Distance < NextDistance ->
- Node;
-							true -> Next
-						end,
-	get_next_node(Rest, NewNext).
 
 
 
-% replaces a node in the graph
-replace_node(Node, Graph) ->
-	replace_node(Node, Graph, []).
-replace_node(_Node, [], Acc) -> Acc;
-replace_node(Node, [Head|Tail], Acc) ->
-	NodeId = get_node_id(Node),
-	HeadId = get_node_id(Head),
-	if HeadId == NodeId ->
-			Tail ++ [Node|Acc];
-		true ->
-			replace_node(Node, Tail, [Head|Acc])
-	end.
-
-
-
-
-% looks up node by id
-get_node([], _) -> throw(badarg);
-get_node([Node|Graph], LookupId) ->
-	Id = get_node_id(Node),
-	if LookupId == Id -> Node;
-		true -> get_node(Graph, LookupId)
-	end.
 
 % calculates tentative distance and updates any nodes that need it
 % tentative distance is the distance from node A to origin via Node B
@@ -226,28 +304,33 @@ calc_tentative_distance([Node|Rest], CurrDistance, Acc) ->
 
 %% path functions
 
-% returns a list of ids that constitutes the shortest path from start to end in this graph
+get_path_node([Head|Rest], Id) ->
+	HeadId = get_node_id(Head),
+	if HeadId == Id -> Head;
+		true -> get_path_node(Rest, Id)
+	end.
+
 % starts at the end node and finds the shortest path back to the start node,
 % which just consists of picking the neighbor with the shortest distance
-get_path(StartId, EndId, Graph) ->
-	EndNode = get_node(Graph, EndId),
-	get_path(EndNode, Graph, StartId, []).
+get_path(StartId, EndId, List) ->
+	EndNode = get_path_node(List, EndId),
+	get_path(EndNode, List, StartId, []).
 
-get_path(CurrNode, Graph, StartId, Ids) ->
+get_path(CurrNode, List, StartId, Ids) ->
 	CurrId = get_node_id(CurrNode),
 	Conns = get_node_connected(CurrNode),
 	if CurrId == StartId -> [StartId|Ids];
 		true ->
-			NextNode = get_shortest_conn_node(Conns, Graph),
-			get_path(NextNode, Graph, StartId, [CurrId|Ids])
+			NextNode = get_shortest_conn_node(Conns, List),
+			get_path(NextNode, List, StartId, [CurrId|Ids])
 	end.
 
 % returns the neighbor with the shortest distance back to the origin
 % this will be the next node back in the path to the origin
-get_shortest_conn_node(Conns, Graph) ->
+get_shortest_conn_node(Conns, List) ->
 	Empty = null,
 	lists:foldl(fun(ConnId, ShortestNode) ->
-		NextNode = get_node(Graph, ConnId),
+		NextNode = get_path_node(List, ConnId),
 		if ShortestNode == Empty -> NextNode;
 			true ->
 				Distance = get_node_distance(NextNode),
