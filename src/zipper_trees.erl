@@ -1,6 +1,6 @@
 -module(zipper_trees).
 
--export([convert_tree/2, up/1, left/1, right/1, get_value/1, put_value/2]).
+-export([convert_tree/2, up/1, left/1, right/1, get_value/1, set_value/2]).
 
 
 % converts binary treee to zipper
