@@ -25,13 +25,6 @@ test() ->
 			{right, t},
 				{down, 1},
 				{right, 2},
-				{right, 3},
-				{right, 4},
-				{right, 5},
-				{right, 6},
-				{right, 7},
-				{right, 8},
-				{right, 9},
 				{up, nil},
 			{right, u},
 			{right, v},
@@ -41,17 +34,23 @@ test() ->
 
 	M = zipper_nary_trees,
 	ZTreeStart = zipper_nary_trees:create(),
+	io:format("starting tree: ~p~n", [ZTreeStart]),
 	ZTreeStart2 = zipper_nary_trees:insert(a, ZTreeStart),
+	io:format("insert ~p into tree: ~p~n", [a, ZTreeStart2]),
+
 
 	ZTreeEnd = lists:foldl(fun({Fun, Char}, ZTreeIn) ->
+	io:format("command: ~p, insert: ~p~nzlist before: ~p~n", [Fun, Char, ZTreeIn]),
 		ZTreeOut = M:Fun(ZTreeIn),
-		if Char == nil -> ZTreeOut;
+		ZT = if Char == nil -> ZTreeOut;
 			true -> M:insert(Char, ZTreeOut)
-		end
+		end,
+		io:format("list after ~p~n~n", [ZT]),
+		ZT
 	end, ZTreeStart2, Input),
 
-	ExpectedValue = x,
-	Value = zipper_nary_trees:get_value(ZTreeEnd),
+	_ExpectedValue = x,
+	_Value = zipper_nary_trees:get_value(ZTreeEnd),
 	io:format("end tree: ~p~n", [ZTreeEnd]),
 	ok.
 
@@ -59,7 +58,7 @@ test() ->
 create() -> {zipper_list:create(), []}.
 
 create_node(Value) ->
-	{Value, create()}.
+	{Value, zipper_list:create()}.
 
 insert(Value, {ZList, Context}) ->
 	NewNode = create_node(Value),
@@ -67,18 +66,26 @@ insert(Value, {ZList, Context}) ->
 	{NewZList, Context}.
 
 get_value({ZList, _Context}) ->
-	zipper_list:get_focus(ZList).
+	{Value, _ZListBelow} = zipper_list:get_focus(ZList),
+	Value.
+
 
 down({ZList, Context}) ->
 	{Value, Child} = zipper_list:get_focus(ZList),
-	Rest = zipper_list:delete_focus(ZList),
-	NewContext = [{Value, Rest} | Context],
-	{Child, NewContext}.
+	IsEmpty = zipper_list:is_empty(ZList),
+	if IsEmpty ->
+			{ZList, Context};
+		true ->
+			Rest = zipper_list:delete_focus(ZList),
+			NewContext = [{Value, Rest} | Context],
+			{Child, NewContext}
+	end.
 
 up({List, []}) -> {List, []};
 up({ZList, Context}) ->
 	[{Value, Rest}|CtxTail] = Context,
-	NewZList = zipper_list:insert(Value, Rest),
+	%Nodes = [{Value, ZList} | Rest],
+	NewZList = zipper_list:insert({Value, ZList}, Rest),
 	{NewZList, CtxTail}.
 
 
